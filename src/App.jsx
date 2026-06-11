@@ -251,7 +251,7 @@ export default function App() {
         type: newTx.type,
         date: newTx.date,
         timestamp: Date.now(),
-        tags: [],
+        tags: newTx.tags || [],
         isRecurring: false,
         recurringPeriod: ""
       });

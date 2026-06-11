@@ -116,12 +116,12 @@ export default function TransactionList({ transactions, onDeleteTransaction, wal
                   <h3 className="font-semibold text-gray-200 truncate">{item.title}</h3>
 
                   {/* Tags Badges/Pills */}
-                  {item.tags && item.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {item.tags && Array.isArray(item.tags) && item.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
                       {item.tags.map((tag, idx) => (
                         <span 
                           key={idx} 
-                          className="px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/15 transition-all duration-300 hover:bg-purple-500/20"
+                          className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#1a233a]/60 text-indigo-300 border border-indigo-500/20 shadow-sm transition-all duration-300 hover:bg-[#1a233a]/90 hover:border-indigo-500/40"
                         >
                           {tag}
                         </span>
