@@ -10,13 +10,13 @@ import { Sparkles, Wallet, ArrowUpCircle, ArrowDownCircle, Trash } from 'lucide-
 export default function App() {
   // Load transactions from localStorage or start empty
   const [transactions, setTransactions] = useState(() => {
-    const saved = localStorage.getItem('cat_transactions');
+    const saved = localStorage.getItem('transactions');
     return saved ? JSON.parse(saved) : [];
   });
 
   // Save to localStorage when state updates
   useEffect(() => {
-    localStorage.setItem('cat_transactions', JSON.stringify(transactions));
+    localStorage.setItem('transactions', JSON.stringify(transactions));
   }, [transactions]);
 
   // Calculate Balance statistics
