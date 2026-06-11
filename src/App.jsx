@@ -10,8 +10,7 @@ import { Sparkles, Wallet, ArrowUpCircle, ArrowDownCircle, Trash, LogOut } from 
 // รายชื่ออีเมลที่ได้รับอนุญาตในการเข้าใช้งานระบบ (Whitelist)
 const ALLOWED_EMAILS = [
   "phantomkmutt@gmail.com", // อีเมลหลักของคุณ
-  "Kukiaddumrong@gmail.com", // อีเมลที่ได้รับอนุญาตเพิ่มเติม
-  // สามารถเพิ่มรายชื่ออีเมลอื่นๆ ที่ต้องการให้อนุญาตใช้งานตรงนี้ได้ครับ
+  "kukiaddumrong@gmail.com", // อีเมลที่ได้รับอนุญาตเพิ่มเติม
 ];
 
 /**
@@ -159,8 +158,8 @@ export default function App() {
     return <Login />;
   }
 
-  // ตรวจสอบสิทธิ์อีเมลผู้เข้าใช้งาน (Whitelist Check)
-  if (!ALLOWED_EMAILS.includes(user.email)) {
+  // ตรวจสอบสิทธิ์อีเมลผู้เข้าใช้งาน (Whitelist Check - แบบไม่สนใจพิมพ์เล็ก/ใหญ่)
+  if (!ALLOWED_EMAILS.map(e => e.toLowerCase()).includes(user.email?.toLowerCase())) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         {/* Glow Background Accent */}
