@@ -7,6 +7,12 @@ import TransactionForm from './components/TransactionForm';
 import TransactionList from './components/TransactionList';
 import { Sparkles, Wallet, ArrowUpCircle, ArrowDownCircle, Trash, LogOut } from 'lucide-react';
 
+// รายชื่ออีเมลที่ได้รับอนุญาตในการเข้าใช้งานระบบ (Whitelist)
+const ALLOWED_EMAILS = [
+  "phantomkmutt@gmail.com", // อีเมลหลักของคุณ
+  // สามารถเพิ่มรายชื่ออีเมลอื่นๆ ที่ต้องการให้อนุญาตใช้งานตรงนี้ได้ครับ
+];
+
 /**
  * Main Application Component
  */
@@ -150,6 +156,40 @@ export default function App() {
   // Redirect to Login if user is not authenticated
   if (!user) {
     return <Login />;
+  }
+
+  // ตรวจสอบสิทธิ์อีเมลผู้เข้าใช้งาน (Whitelist Check)
+  if (!ALLOWED_EMAILS.includes(user.email)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+        {/* Glow Background Accent */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-rose-600/15 filter blur-3xl -z-10" />
+
+        <div className="glass-panel w-full max-w-md p-8 rounded-3xl shadow-2xl border border-rose-500/25 relative overflow-hidden backdrop-blur-2xl">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-pink-500" />
+          
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-full bg-rose-950/40 border border-rose-500/30 flex items-center justify-center text-4xl animate-bounce">
+              ❌
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-bold text-rose-400 mb-3 tracking-tight">ขออภัย คุณไม่มีสิทธิ์เข้าใช้งาน</h2>
+          
+          <p className="text-gray-400 text-sm mb-6 px-4 leading-relaxed">
+            บัญชีผู้ใช้ (<span className="text-gray-200 font-semibold">{user.email}</span>) นี้ยังไม่ได้รับสิทธิ์ในการเข้าถึงระบบเหมียวแทร็กเกอร์ครับ
+          </p>
+
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg hover:shadow-rose-500/20 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+          >
+            <LogOut className="w-4 h-4" />
+            ออกจากระบบ (Logout)
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Show the Main application dashboard once authenticated
