@@ -1,23 +1,51 @@
 import React, { useState, useEffect } from 'react';
+import { auth } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import Login from './Login';
 import CatMascot from './components/CatMascot';
 import TransactionForm from './components/TransactionForm';
 import TransactionList from './components/TransactionList';
-import { Sparkles, Wallet, ArrowUpCircle, ArrowDownCircle, Trash } from 'lucide-react';
+import { Sparkles, Wallet, ArrowUpCircle, ArrowDownCircle, Trash, LogOut } from 'lucide-react';
 
 /**
  * Main Application Component
  */
 export default function App() {
+  // Authentication states
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   // Load transactions from localStorage or start empty
   const [transactions, setTransactions] = useState(() => {
     const saved = localStorage.getItem('transactions');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Save to localStorage when state updates
+  // Track Auth state changes from Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+
+    // Cleanup subscription
+    return () => unsubscribe();
+  }, []);
+
+  // Save to localStorage when transactions state updates
   useEffect(() => {
     localStorage.setItem('transactions', JSON.stringify(transactions));
   }, [transactions]);
+
+  // Logout Handler
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      console.log("ออกจากระบบสำเร็จ!");
+    } catch (error) {
+      console.error("เกิดข้อผิดพลาดในการออกจากระบบ:", error.message);
+    }
+  };
 
   // Calculate Balance statistics
   const totalIncome = transactions
@@ -106,8 +134,58 @@ export default function App() {
     setTransactions(demoData);
   };
 
+  // Show a premium loading spinner while resolving auth state
+  if (loading) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen bg-[#0b0f19] text-gray-100">
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 border-4 border-indigo-500/20 rounded-full" />
+          <div className="absolute inset-0 border-4 border-t-indigo-500 border-r-indigo-500 rounded-full animate-spin" />
+        </div>
+        <p className="mt-4 text-sm font-semibold text-indigo-400 tracking-wider animate-pulse">กำลังโหลดข้อมูลเหมียว...</p>
+      </div>
+    );
+  }
+
+  // Redirect to Login if user is not authenticated
+  if (!user) {
+    return <Login />;
+  }
+
+  // Show the Main application dashboard once authenticated
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
+      
+      {/* USER PROFILE & LOGOUT BAR */}
+      <div className="glass-panel px-5 py-3 rounded-2xl mb-8 flex justify-between items-center shadow-lg animate-fade-in-up">
+        <div className="flex items-center gap-3">
+          {user.photoURL ? (
+            <img 
+              src={user.photoURL} 
+              alt={user.displayName} 
+              className="w-9 h-9 rounded-full border border-indigo-500/40"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-indigo-950/60 border border-indigo-500/40 flex items-center justify-center font-bold text-indigo-300 text-sm">
+              {user.displayName ? user.displayName.substring(0, 1).toUpperCase() : 'U'}
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-gray-400 font-semibold">สวัสดีเหมียว~</p>
+            <h4 className="text-sm font-bold text-gray-200">{user.displayName || user.email}</h4>
+          </div>
+        </div>
+
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold border border-rose-500/20 transition-all duration-200"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          ออกจากระบบ
+        </button>
+      </div>
+
       {/* HEADER SECTION WITH MASCOT */}
       <header className="flex flex-col items-center mb-8 text-center animate-fade-in-up">
         {/* Dynamic SVG Cat Mascot */}
