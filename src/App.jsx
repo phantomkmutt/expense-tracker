@@ -294,6 +294,67 @@ export default function App() {
     }
   };
 
+  // Inject Seed Data to quickly show working app on Cloud Firestore
+  const handleLoadDemo = async () => {
+    const defaultWallet = wallets.find(w => w.name === 'เงินสด') || wallets[0];
+    if (!defaultWallet) {
+      alert('ไม่พบกระเป๋าเงินสำหรับใส่ข้อมูลสาธิตเหมียว~');
+      return;
+    }
+
+    const demoData = [
+      {
+        title: 'เงินเดือนปลาทูประจำเดือน',
+        amount: 32000,
+        type: 'income',
+      },
+      {
+        title: 'ซื้อขนมแมวเลียพรีเมียม',
+        amount: 450,
+        type: 'expense',
+      },
+      {
+        title: 'รับจ้างเฝ้าบ้านระเบียงข้างห้อง',
+        amount: 1200,
+        type: 'income',
+      },
+      {
+        title: 'ค่าซ่อมของเล่นหนูวิ่งเวียน',
+        amount: 1500,
+        type: 'expense',
+      }
+    ];
+
+    try {
+      const batch = writeBatch(db);
+      demoData.forEach((tx, idx) => {
+        const docRef = doc(collection(db, 'transactions'));
+        batch.set(docRef, {
+          userId: user.uid,
+          walletId: defaultWallet.id,
+          title: tx.title,
+          amount: tx.amount,
+          type: tx.type,
+          date: new Date(Date.now() - 3600000 * (24 - idx * 6)).toLocaleString('th-TH', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          timestamp: Date.now() - 3600000 * (24 - idx * 6),
+          tags: [],
+          isRecurring: false,
+          recurringPeriod: ""
+        });
+      });
+      await batch.commit();
+      console.log("Demo data loaded to Firestore!");
+    } catch (err) {
+      console.error("Error loading demo data:", err);
+    }
+  };
+
   // --- STATS & BALANCE CALCULATIONS ---
   // Filters transactions by selected wallet
   const displayTransactions = selectedWalletId === 'all'
