@@ -10,6 +10,7 @@ import { Sparkles, Wallet, ArrowUpCircle, ArrowDownCircle, Trash, LogOut } from 
 // รายชื่ออีเมลที่ได้รับอนุญาตในการเข้าใช้งานระบบ (Whitelist)
 const ALLOWED_EMAILS = [
   "phantomkmutt@gmail.com", // อีเมลหลักของคุณ
+  "Kukiaddumrong@gmail.com", // อีเมลที่ได้รับอนุญาตเพิ่มเติม
   // สามารถเพิ่มรายชื่ออีเมลอื่นๆ ที่ต้องการให้อนุญาตใช้งานตรงนี้ได้ครับ
 ];
 
