@@ -108,6 +108,14 @@ export default function TransactionList({ transactions, onDeleteTransaction, wal
                       <span>{wallet.name}</span>
                     </span>
 
+                    {/* Recurring Badge */}
+                    {item.isRecurring && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-amber-500/15 text-amber-400 border border-amber-500/10 flex items-center gap-1" title="รายการบันทึกอัตโนมัติรายเดือน">
+                        <span>🔄</span>
+                        <span>รายเดือน</span>
+                      </span>
+                    )}
+
                     {/* Timestamp */}
                     <span className="text-gray-500 text-[10px]">{item.date}</span>
                   </div>

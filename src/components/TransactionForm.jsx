@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, FileText, Wallet, Tag } from 'lucide-react';
+import { PlusCircle, FileText, Wallet, Tag, RefreshCw } from 'lucide-react';
 
 /**
  * TransactionForm Component
@@ -14,6 +14,7 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
   const [type, setType] = useState('income'); // 'income' or 'expense'
   const [walletId, setWalletId] = useState('');
   const [tagsText, setTagsText] = useState(''); // State สำหรับรับข้อความแท็ก
+  const [isRecurring, setIsRecurring] = useState(false); // State สำหรับตั้งค่ารายการประจำเดือน
   const [error, setError] = useState('');
 
   // Update selected wallet inside form when selectedWalletId changes
@@ -57,13 +58,15 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
       return;
     }
 
-    // Call callback with new transaction item including tags array
+    // Call callback with new transaction item including tags & recurring info
     onAddTransaction({
       title: title.trim(),
       amount: parsedAmount,
       type,
       walletId,
-      tags: parseTags(tagsText), // ส่ง Array ของแท็กที่จัดรูปแบบแล้วไปบันทึก
+      tags: parseTags(tagsText),
+      isRecurring, // บันทึกสิทธิ์บูลีน
+      recurringPeriod: isRecurring ? 'monthly' : '', // กำหนดช่วงรอบเวลา
       date: new Date().toLocaleString('th-TH', {
         year: 'numeric',
         month: 'short',
@@ -76,7 +79,8 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
     // Reset Form Fields (keep current walletId)
     setTitle('');
     setAmount('');
-    setTagsText(''); // ล้างช่องแท็ก
+    setTagsText('');
+    setIsRecurring(false); // ล้างสิทธิ์รายการประจำเดือน
   };
 
   return (
@@ -163,6 +167,21 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
           <p className="text-[10px] text-gray-500 mt-1">
             * ระบบจะทำการสร้างเครื่องหมาย # นำหน้าคำย่อยให้คุณโดยอัตโนมัติเหมียว~
           </p>
+        </div>
+
+        {/* Checkbox for Recurring Transactions */}
+        <div className="flex items-center gap-2.5 py-1 text-gray-300">
+          <input
+            id="recurring-checkbox"
+            type="checkbox"
+            checked={isRecurring}
+            onChange={(e) => setIsRecurring(e.target.checked)}
+            className="w-4 h-4 rounded text-indigo-600 bg-gray-900/60 border-gray-800 focus:ring-indigo-500 focus:ring-offset-gray-900 cursor-pointer"
+          />
+          <label htmlFor="recurring-checkbox" className="text-sm font-semibold select-none cursor-pointer flex items-center gap-1.5 hover:text-indigo-400 transition-all">
+            <RefreshCw className={`w-3.5 h-3.5 ${isRecurring ? 'animate-spin' : ''}`} />
+            ตั้งเป็นรายการประจำทุกเดือน (Monthly Recurring)
+          </label>
         </div>
 
         {/* Layout for Amount & Type */}

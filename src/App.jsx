@@ -134,6 +134,81 @@ export default function App() {
     }
   }, [user, wallets]);
 
+  // 4. Verify and Generate Monthly Recurring Transactions
+  useEffect(() => {
+    if (!user || transactions.length === 0) return;
+
+    // Filter to find active recurring templates (isRecurring is true)
+    const templates = transactions.filter(t => t.isRecurring === true);
+    if (templates.length === 0) return;
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+
+    const generateRecurring = async () => {
+      for (const template of templates) {
+        const startDate = new Date(template.timestamp);
+        const startYear = startDate.getFullYear();
+        const startMonth = startDate.getMonth();
+
+        // Calculate month difference between template creation and current date
+        const monthsDiff = (currentYear - startYear) * 12 + (currentMonth - startMonth);
+
+        // If one or more months has elapsed
+        if (monthsDiff > 0) {
+          for (let i = 1; i <= monthsDiff; i++) {
+            const targetDate = new Date(startYear, startMonth + i, 1);
+            const targetYear = targetDate.getFullYear();
+            const targetMonth = targetDate.getMonth();
+
+            // Check if there is already a transaction for this template in the target month & year
+            const alreadyExists = transactions.some(t => {
+              const tDate = new Date(t.timestamp);
+              return (
+                t.title === template.title &&
+                t.amount === template.amount &&
+                t.walletId === template.walletId &&
+                tDate.getFullYear() === targetYear &&
+                tDate.getMonth() === targetMonth
+              );
+            });
+
+            // If it doesn't exist, create the monthly occurrence document in Firestore
+            if (!alreadyExists) {
+              console.log(`Generating recurring transaction "${template.title}" for ${targetMonth + 1}/${targetYear}`);
+              try {
+                await addDoc(collection(db, 'transactions'), {
+                  userId: user.uid,
+                  walletId: template.walletId,
+                  title: template.title,
+                  amount: template.amount,
+                  type: template.type,
+                  tags: template.tags || [],
+                  date: targetDate.toLocaleString('th-TH', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }),
+                  timestamp: targetDate.getTime(),
+                  isRecurring: false, // The generated occurrence itself is NOT a template
+                  isRecurringInstance: true, // Identify as a generated instance
+                  recurringPeriod: ""
+                });
+              } catch (err) {
+                console.error("Error generating recurring transaction:", err);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    generateRecurring();
+  }, [user, transactions]);
+
   // Helper function to create default wallet
   const initializeDefaultWallet = async (uid) => {
     try {
