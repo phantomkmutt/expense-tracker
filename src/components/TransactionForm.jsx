@@ -1,16 +1,28 @@
-import React, { useState } from 'react';
-import { PlusCircle, FileText, DollarSign } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { PlusCircle, FileText, Wallet } from 'lucide-react';
 
 /**
  * TransactionForm Component
  * @param {Object} props
  * @param {Function} props.onAddTransaction - Callback function when a new transaction is added
+ * @param {Array} props.wallets - List of active wallets
+ * @param {string} props.selectedWalletId - Currently selected wallet ID ('all' or specific ID)
  */
-export default function TransactionForm({ onAddTransaction }) {
+export default function TransactionForm({ onAddTransaction, wallets = [], selectedWalletId }) {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('income'); // 'income' or 'expense'
+  const [walletId, setWalletId] = useState('');
   const [error, setError] = useState('');
+
+  // Update selected wallet inside form when selectedWalletId changes
+  useEffect(() => {
+    if (selectedWalletId && selectedWalletId !== 'all') {
+      setWalletId(selectedWalletId);
+    } else if (wallets.length > 0) {
+      setWalletId(wallets[0].id);
+    }
+  }, [selectedWalletId, wallets]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -28,12 +40,17 @@ export default function TransactionForm({ onAddTransaction }) {
       return;
     }
 
+    if (!walletId) {
+      setError('กรุณาเลือกกระเป๋าเงินสำหรับรายการนี้');
+      return;
+    }
+
     // Call callback with new transaction item
     onAddTransaction({
-      id: Date.now(),
       title: title.trim(),
       amount: parsedAmount,
       type,
+      walletId,
       date: new Date().toLocaleString('th-TH', {
         year: 'numeric',
         month: 'short',
@@ -43,10 +60,9 @@ export default function TransactionForm({ onAddTransaction }) {
       })
     });
 
-    // Reset Form Fields
+    // Reset Form Fields (keep current walletId)
     setTitle('');
     setAmount('');
-    setType('income');
   };
 
   return (
@@ -81,6 +97,34 @@ export default function TransactionForm({ onAddTransaction }) {
               placeholder="เช่น เงินเดือน, ซื้อกาแฟ, ค่าอาหาร"
               className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
             />
+          </div>
+        </div>
+
+        {/* Wallet Selection Dropdown */}
+        <div>
+          <label htmlFor="wallet-select" className="block text-sm font-medium text-gray-400 mb-1.5">
+            เลือกกระเป๋าเงิน
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Wallet className="h-4 w-4 text-gray-500" />
+            </div>
+            <select
+              id="wallet-select"
+              value={walletId}
+              onChange={(e) => setWalletId(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
+            >
+              {wallets.length === 0 ? (
+                <option value="" disabled>กำลังโหลดกระเป๋าเงิน...</option>
+              ) : (
+                wallets.map((w) => (
+                  <option key={w.id} value={w.id} className="bg-[#0b0f19] text-gray-200">
+                    {w.icon} {w.name}
+                  </option>
+                ))
+              )}
+            </select>
           </div>
         </div>
 
@@ -127,7 +171,7 @@ export default function TransactionForm({ onAddTransaction }) {
         {/* Submit Button */}
         <button
           type="submit"
-          className="w-full mt-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-indigo-500/20 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2"
+          className="w-full mt-2 py-3 px-4 bg-indigo-650 hover:bg-indigo-550 active:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-indigo-500/20 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2"
         >
           <PlusCircle className="w-5 h-5" />
           บันทึกรายการ
