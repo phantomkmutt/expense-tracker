@@ -515,17 +515,17 @@ export default function App() {
                     : 'glass-panel border-white/5 hover:border-indigo-500/30 hover:scale-[1.01]'
                 }`}
               >
-                {/* Delete button only when hovered, and only if multiple wallets exist */}
+                {/* Delete button (visible when multiple wallets exist) */}
                 {wallets.length > 1 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteWallet(w.id, w.name);
                     }}
-                    className="absolute top-2 right-2 p-1 bg-black/40 hover:bg-rose-500/85 text-gray-300 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-rose-600 text-gray-300 hover:text-white rounded-xl transition-all duration-200 shadow-sm"
                     title="ลบกระเป๋าเงินนี้"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 )}
 
