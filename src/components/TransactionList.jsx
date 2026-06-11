@@ -92,7 +92,7 @@ export default function TransactionList({ transactions, onDeleteTransaction, wal
                 }`}
               >
                 <div className="flex-1 min-w-0 pr-4">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
                     {/* Type Badge */}
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${
                       item.type === 'income'
@@ -111,8 +111,23 @@ export default function TransactionList({ transactions, onDeleteTransaction, wal
                     {/* Timestamp */}
                     <span className="text-gray-500 text-[10px]">{item.date}</span>
                   </div>
+                  
                   {/* Title */}
                   <h3 className="font-semibold text-gray-200 truncate">{item.title}</h3>
+
+                  {/* Tags Badges/Pills */}
+                  {item.tags && item.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {item.tags.map((tag, idx) => (
+                        <span 
+                          key={idx} 
+                          className="px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/15 transition-all duration-300 hover:bg-purple-500/20"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Amount and Deletion Button */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, FileText, Wallet } from 'lucide-react';
+import { PlusCircle, FileText, Wallet, Tag } from 'lucide-react';
 
 /**
  * TransactionForm Component
@@ -13,6 +13,7 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('income'); // 'income' or 'expense'
   const [walletId, setWalletId] = useState('');
+  const [tagsText, setTagsText] = useState(''); // State สำหรับรับข้อความแท็ก
   const [error, setError] = useState('');
 
   // Update selected wallet inside form when selectedWalletId changes
@@ -23,6 +24,17 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
       setWalletId(wallets[0].id);
     }
   }, [selectedWalletId, wallets]);
+
+  // ฟังก์ชันแยกคำและจัดรูปแบบแท็ก (เช่น " #อาหาร, #ขนม" -> ["#อาหาร", "#ขนม"])
+  const parseTags = (text) => {
+    if (!text || !text.trim()) return [];
+    
+    return text
+      .split(/[,\s]+/)               // แยกด้วยเครื่องหมายจุลภาค (,) หรือการเว้นวรรค
+      .map(tag => tag.trim())         // ลบช่องว่างหัวท้ายของแต่ละคำ
+      .filter(tag => tag.length > 0)  // กรองเอาเฉพาะคำที่ไม่ใช่ค่าว่าง
+      .map(tag => tag.startsWith('#') ? tag : `#${tag}`); // บังคับให้เริ่มด้วยเครื่องหมาย # เสมอ
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -45,12 +57,13 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
       return;
     }
 
-    // Call callback with new transaction item
+    // Call callback with new transaction item including tags array
     onAddTransaction({
       title: title.trim(),
       amount: parsedAmount,
       type,
       walletId,
+      tags: parseTags(tagsText), // ส่ง Array ของแท็กที่จัดรูปแบบแล้วไปบันทึก
       date: new Date().toLocaleString('th-TH', {
         year: 'numeric',
         month: 'short',
@@ -63,6 +76,7 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
     // Reset Form Fields (keep current walletId)
     setTitle('');
     setAmount('');
+    setTagsText(''); // ล้างช่องแท็ก
   };
 
   return (
@@ -126,6 +140,29 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
               )}
             </select>
           </div>
+        </div>
+
+        {/* Tags Input */}
+        <div>
+          <label htmlFor="tags-input" className="block text-sm font-medium text-gray-400 mb-1.5">
+            แท็ก / หมวดหมู่ย่อย (คั่นด้วยจุลภาคหรือเว้นวรรค)
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Tag className="h-4 w-4 text-gray-500" />
+            </div>
+            <input
+              id="tags-input"
+              type="text"
+              value={tagsText}
+              onChange={(e) => setTagsText(e.target.value)}
+              placeholder="เช่น #อาหาร, #ของหวาน, #ทริปเชียงใหม่"
+              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
+            />
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">
+            * ระบบจะทำการสร้างเครื่องหมาย # นำหน้าคำย่อยให้คุณโดยอัตโนมัติเหมียว~
+          </p>
         </div>
 
         {/* Layout for Amount & Type */}
