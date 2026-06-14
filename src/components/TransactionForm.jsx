@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PlusCircle, FileText, Wallet, Tag, RefreshCw } from 'lucide-react';
+import Tesseract from 'tesseract.js';
 
 const DEFAULT_TITLES = [
   "ค่าอาหาร",
@@ -36,6 +37,32 @@ const parseBankNotification = (text) => {
   if (receiverMatch && receiverMatch[1]) {
     title = `โอนไป: ${receiverMatch[1].trim()}`;
   }
+  return { amount, title };
+};
+
+// ฟังก์ชันวิเคราะห์ข้อมูลโอนเงินจากข้อความ OCR สลิป/ไลน์
+const extractDataFromText = (text) => {
+  if (!text) return null;
+  let amount = "";
+  let title = "รายการโอนเงิน (OCR)";
+
+  // หายอดเงิน (เช่น "เงินออก 450.00 บาท" หรือ "จำนวนเงิน 450 บาท")
+  const amountMatch = text.match(/เงินออก\s*[-]?\s*([\d,.]+)\s*บาท/) || 
+                      text.match(/จำนวน(?:เงิน)?\s*([\d,.]+)\s*บาท/) ||
+                      text.match(/(?:โอนเงิน|ยอดเงิน)\s*([\d,.]+)\s*บาท/);
+                      
+  if (amountMatch && amountMatch[1]) {
+    amount = amountMatch[1].replace(/,/g, '');
+  }
+
+  // หาชื่อผู้รับโอน (เช่น "ผู้รับโอน นาย สมชาย" หรือ "ไปยัง นาย สมชาย")
+  const titleMatch = text.match(/(?:ผู้รับโอน|ไปยัง|ถึงบัญชี)\s+([^\n]+)/) ||
+                     text.match(/(?:โอนไปยัง|โอนให้)\s+([^\n]+)/);
+                     
+  if (titleMatch && titleMatch[1]) {
+    title = `สแกนโอน: ${titleMatch[1].trim()}`;
+  }
+  
   return { amount, title };
 };
 
@@ -76,6 +103,11 @@ export default function TransactionForm({
   const [walletId, setWalletId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [error, setError] = useState('');
+
+  // OCR scanning states
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState('');
+  const fileInputRef = useRef(null);
 
   // Update selected wallet inside form when selectedWalletId changes
   useEffect(() => {
@@ -130,6 +162,67 @@ export default function TransactionForm({
     } catch (err) {
       console.error("Smart paste error:", err);
       setError('ไม่สามารถเข้าถึงคลิปบอร์ดได้ กรุณาอนุญาตสิทธิ์การวางข้อมูลของเบราว์เซอร์เหมียว~');
+    }
+  };
+
+  // จัดการอัปโหลดและสแกนรูปภาพด้วย Tesseract.js (OCR)
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOcrLoading(true);
+    setOcrProgress('กำลังโหลดไฟล์ภาพ...');
+    setError('');
+
+    try {
+      const result = await Tesseract.recognize(
+        file,
+        'tha+eng',
+        {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              setOcrProgress(`กำลังสแกน... ${(m.progress * 100).toFixed(0)}%`);
+            } else {
+              setOcrProgress('กำลังดึงข้อความจากภาพ...');
+            }
+          }
+        }
+      );
+
+      const text = result.data.text;
+      console.log("OCR Extracted Text:\n", text);
+
+      if (!text || !text.trim()) {
+        setError('ไม่สามารถถอดข้อความจากรูปภาพได้ กรุณาเลือกสลิปที่ตัวหนังสือชัดเจนเหมียว~');
+        setOcrLoading(false);
+        return;
+      }
+
+      const parsed = extractDataFromText(text);
+      if (parsed && (parsed.amount || parsed.title !== 'รายการโอนเงิน (OCR)')) {
+        if (parsed.title) {
+          setSelectedTitleOpt('__custom__');
+          setCustomTitle(parsed.title);
+        }
+        if (parsed.amount) {
+          setAmount(parsed.amount);
+        }
+        // สลับประเภทเป็นรายจ่ายอัตโนมัติหากพบคำสำคัญ
+        if (text.includes('เงินออก') || text.includes('โอนเงิน') || text.includes('ไปยัง') || text.includes('ผู้รับโอน')) {
+          setType('expense');
+        }
+      } else {
+        setError('สแกนเสร็จสิ้น แต่ไม่พบรูปแบบจำนวนเงินหรือผู้รับโอนในรูปภาพนี้เหมียว~');
+      }
+    } catch (err) {
+      console.error("OCR scanning error:", err);
+      setError('การสแกนรูปภาพล้มเหลว กรุณาลองใหม่อีกครั้งเหมียว~');
+    } finally {
+      setOcrLoading(false);
+      setOcrProgress('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -212,22 +305,49 @@ export default function TransactionForm({
 
   return (
     <div className="glass-panel rounded-2xl p-6 shadow-xl transition-all duration-300">
+      {/* Hidden File Picker */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        className="hidden"
+      />
+
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-300">
           <PlusCircle className="w-5 h-5 text-indigo-400" />
           บันทึกรายการใหม่
         </h2>
-        <button
-          type="button"
-          onClick={handleSmartPaste}
-          className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/35 hover:border-indigo-400 rounded-xl transition-all duration-200 shadow-sm"
-          title="ดึงข้อมูลโอนเงินจากสลิปในคลิปบอร์ดมากรอกอัตโนมัติ"
-        >
-          📋 วางจากแอปธนาคาร (Smart Paste)
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-400 border border-emerald-500/35 hover:border-emerald-450 rounded-xl transition-all duration-200 shadow-sm"
+            title="อัปโหลดสลิป/ภาพหน้าจอเพื่อถอดข้อความอัตโนมัติ"
+          >
+            📷 สแกนรูปภาพ (OCR)
+          </button>
+          <button
+            type="button"
+            onClick={handleSmartPaste}
+            className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/35 hover:border-indigo-400 rounded-xl transition-all duration-200 shadow-sm"
+            title="ดึงข้อมูลโอนเงินจากสลิปในคลิปบอร์ดมากรอกอัตโนมัติ"
+          >
+            📋 Smart Paste
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* OCR Processing Loader banner */}
+        {ocrLoading && (
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-sm font-medium flex items-center gap-2 animate-pulse">
+            <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <span>{ocrProgress}</span>
+          </div>
+        )}
+
         {/* Error Message */}
         {error && (
           <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg text-sm font-medium animate-pulse">
