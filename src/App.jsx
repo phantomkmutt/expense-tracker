@@ -791,11 +791,8 @@ export default function App() {
         )}
       </section>
 
-      {/* 4.6 SMART ANALYTICS DASHBOARD */}
-      <AnalyticsDashboard transactions={transactions} />
-
       {/* 5. FORM AND LIST WORKSPACE */}
-      <main className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      <main className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
         
         {/* Form Container */}
         <div className="md:col-span-2">
@@ -835,6 +832,9 @@ export default function App() {
           />
         </div>
       </main>
+
+      {/* 5.5 SMART ANALYTICS DASHBOARD */}
+      <AnalyticsDashboard transactions={transactions} />
 
       {/* 6. MODAL: ADD WALLET */}
       {showAddWalletModal && (
