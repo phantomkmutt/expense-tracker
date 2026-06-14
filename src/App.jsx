@@ -129,24 +129,24 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    // Listen to Wallets
-    const qWallets = query(collection(db, 'wallets'), where('userId', '==', user.uid));
+    // Listen to Wallets (Shared household view)
+    const qWallets = query(collection(db, 'wallets'));
     const unsubWallets = onSnapshot(qWallets, (snapshot) => {
       const fetchedWallets = [];
       snapshot.forEach((doc) => {
         fetchedWallets.push({ id: doc.id, ...doc.data() });
       });
 
-      // If user has NO wallets, create default "เงินสด" cash wallet
+      // If database has NO wallets, create default "เงินสด" shared wallet
       if (fetchedWallets.length === 0 && !loading) {
-        initializeDefaultWallet(user.uid);
+        initializeDefaultWallet();
       } else {
         setWallets(fetchedWallets);
       }
     });
 
-    // Listen to Transactions
-    const qTransactions = query(collection(db, 'transactions'), where('userId', '==', user.uid));
+    // Listen to Transactions (Shared household view)
+    const qTransactions = query(collection(db, 'transactions'));
     const unsubTransactions = onSnapshot(qTransactions, (snapshot) => {
       const fetchedTx = [];
       snapshot.forEach((doc) => {
@@ -157,8 +157,8 @@ export default function App() {
       setTransactions(fetchedTx);
     });
 
-    // Listen to User Settings (Budget, Titles, Tags)
-    const unsubSettings = onSnapshot(doc(db, 'userSettings', user.uid), (docSnap) => {
+    // Listen to Shared household Settings (Budget, Titles, Tags)
+    const unsubSettings = onSnapshot(doc(db, 'userSettings', 'shared_household_budget'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setMonthlyBudget(data.monthlyBudget || 10000);
@@ -166,12 +166,12 @@ export default function App() {
         setSavedTags(data.savedTags || []);
       } else {
         // Initialize settings if they don't exist
-        setDoc(doc(db, 'userSettings', user.uid), {
+        setDoc(doc(db, 'userSettings', 'shared_household_budget'), {
           monthlyBudget: 10000,
           savedTitles: [],
           savedTags: [],
           updatedAt: Date.now()
-        }).catch(err => console.error("Error setting default budget:", err));
+        }).catch(err => console.error("Error setting default shared budget:", err));
       }
     });
 
@@ -281,15 +281,16 @@ export default function App() {
     generateRecurring();
   }, [user, transactions]);
 
-  // Helper function to create default wallet
-  const initializeDefaultWallet = async (uid) => {
+  // Helper function to create default shared wallet
+  const initializeDefaultWallet = async () => {
     try {
-      const defaultWalletRef = doc(db, 'wallets', `default_cash_${uid}`);
+      const defaultWalletRef = doc(db, 'wallets', 'default_shared_cash');
       await setDoc(defaultWalletRef, {
-        userId: uid,
+        userId: 'shared',
         name: 'เงินสด',
         icon: '💵',
         color: WALLET_COLORS[0],
+        createdBy: 'system',
         createdAt: Date.now()
       });
     } catch (err) {
@@ -371,6 +372,7 @@ export default function App() {
         icon: newWalletIcon,
         color: newWalletColor,
         description: newWalletDescription.trim(),
+        createdBy: user.email, // Audit Log
         createdAt: Date.now()
       });
       
@@ -458,7 +460,8 @@ export default function App() {
         timestamp: Date.now(),
         tags: newTx.tags || [],
         isRecurring: false,
-        recurringPeriod: ""
+        recurringPeriod: "",
+        createdBy: user.email // Audit Log
       });
 
       const walletName = wallets.find(w => w.id === newTx.walletId)?.name || 'เงินสด';
@@ -590,7 +593,7 @@ export default function App() {
       return;
     }
     try {
-      await setDoc(doc(db, 'userSettings', user.uid), {
+      await setDoc(doc(db, 'userSettings', 'shared_household_budget'), {
         monthlyBudget: parsedBudget,
         updatedAt: Date.now()
       }, { merge: true });
@@ -606,7 +609,7 @@ export default function App() {
     if (!user || !newTitle.trim() || savedTitles.includes(newTitle.trim())) return;
     try {
       const updatedTitles = [...savedTitles, newTitle.trim()];
-      await setDoc(doc(db, 'userSettings', user.uid), {
+      await setDoc(doc(db, 'userSettings', 'shared_household_budget'), {
         savedTitles: updatedTitles
       }, { merge: true });
       logAction(user.uid, user.email, "บันทึกตัวเลือกดร็อปดาวน์", `เพิ่มตัวเลือกชื่อรายการใหม่: "${newTitle.trim()}"`);
@@ -620,7 +623,7 @@ export default function App() {
     if (!user || !newTag.trim() || savedTags.includes(newTag.trim())) return;
     try {
       const updatedTags = [...savedTags, newTag.trim()];
-      await setDoc(doc(db, 'userSettings', user.uid), {
+      await setDoc(doc(db, 'userSettings', 'shared_household_budget'), {
         savedTags: updatedTags
       }, { merge: true });
       logAction(user.uid, user.email, "บันทึกตัวเลือกดร็อปดาวน์", `เพิ่มตัวเลือกแท็กใหม่: "${newTag.trim()}"`);
