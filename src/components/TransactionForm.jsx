@@ -21,6 +21,24 @@ const DEFAULT_TAGS = [
   "#รายได้พิเศษ"
 ];
 
+// ฟังก์ชันวิเคราะห์ข้อความแจ้งเตือนโอนเงินจากแอปธนาคาร
+const parseBankNotification = (text) => {
+  if (!text) return null;
+  let amount = "";
+  let title = "รายการโอนเงิน";
+  
+  const amountMatch = text.match(/จำนวน(?:เงิน)?\s*([\d,.]+)\s*บาท/);
+  if (amountMatch && amountMatch[1]) {
+    amount = amountMatch[1].replace(/,/g, '');
+  }
+  
+  const receiverMatch = text.match(/(?:ไปยังบัญชี|ถึงบัญชี)\s+(.+)/);
+  if (receiverMatch && receiverMatch[1]) {
+    title = `โอนไป: ${receiverMatch[1].trim()}`;
+  }
+  return { amount, title };
+};
+
 /**
  * TransactionForm Component
  * @param {Object} props
@@ -86,6 +104,33 @@ export default function TransactionForm({
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0)
       .map(tag => tag.startsWith('#') ? tag : `#${tag}`);
+  };
+
+  // จัดการกดปุ่ม Smart Paste
+  const handleSmartPaste = async () => {
+    try {
+      setError('');
+      const text = await navigator.clipboard.readText();
+      const parsed = parseBankNotification(text);
+      if (parsed && (parsed.amount || parsed.title)) {
+        if (parsed.title) {
+          setSelectedTitleOpt('__custom__');
+          setCustomTitle(parsed.title);
+        }
+        if (parsed.amount) {
+          setAmount(parsed.amount);
+        }
+        // ตรวจจับคีย์เวิร์ดสำหรับการโอนเงินเพื่อตั้งค่าเป็นรายจ่ายอัตโนมัติ
+        if (text.includes('โอนเงิน') || text.includes('โอนไปยัง') || text.includes('ถึงบัญชี') || text.includes('ไปยังบัญชี') || text.includes('KTB')) {
+          setType('expense');
+        }
+      } else {
+        setError('ไม่พบข้อมูลจำนวนเงินหรือผู้รับโอนจากข้อความในคลิปบอร์ดเหมียว~');
+      }
+    } catch (err) {
+      console.error("Smart paste error:", err);
+      setError('ไม่สามารถเข้าถึงคลิปบอร์ดได้ กรุณาอนุญาตสิทธิ์การวางข้อมูลของเบราว์เซอร์เหมียว~');
+    }
   };
 
   const handleSubmit = (e) => {
@@ -167,10 +212,20 @@ export default function TransactionForm({
 
   return (
     <div className="glass-panel rounded-2xl p-6 shadow-xl transition-all duration-300">
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-indigo-300">
-        <PlusCircle className="w-5 h-5 text-indigo-400" />
-        บันทึกรายการใหม่
-      </h2>
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-300">
+          <PlusCircle className="w-5 h-5 text-indigo-400" />
+          บันทึกรายการใหม่
+        </h2>
+        <button
+          type="button"
+          onClick={handleSmartPaste}
+          className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/35 hover:border-indigo-400 rounded-xl transition-all duration-200 shadow-sm"
+          title="ดึงข้อมูลโอนเงินจากสลิปในคลิปบอร์ดมากรอกอัตโนมัติ"
+        >
+          📋 วางจากแอปธนาคาร (Smart Paste)
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Error Message */}
