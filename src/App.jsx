@@ -7,6 +7,7 @@ import {
   setDoc, 
   addDoc, 
   deleteDoc, 
+  updateDoc,
   query, 
   where, 
   onSnapshot, 
@@ -34,6 +35,11 @@ import {
 const ALLOWED_EMAILS = [
   "phantomkmutt@gmail.com", // อีเมลหลักของคุณ
   "kukiaddumrong@gmail.com", // อีเมลที่ได้รับอนุญาตเพิ่มเติม
+];
+
+// ผู้ใช้อีเมลที่มีสิทธิ์ดู Log ระบบ (Admin Only)
+const ADMIN_EMAILS = [
+  "phantomkmutt@gmail.com",
 ];
 
 // ชุดอิโมจิกระเป๋าเงินมาตรฐานสำหรับการสร้างกระเป๋าเงินใหม่
@@ -64,6 +70,18 @@ export default function App() {
   const [newWalletIcon, setNewWalletIcon] = useState('💵');
   const [newWalletColor, setNewWalletColor] = useState(WALLET_COLORS[0]);
   const [newWalletDescription, setNewWalletDescription] = useState('');
+
+  // Edit Wallet states
+  const [showEditWalletModal, setShowEditWalletModal] = useState(false);
+  const [editingWallet, setEditingWallet] = useState(null);
+  const [editWalletName, setEditWalletName] = useState('');
+  const [editWalletIcon, setEditWalletIcon] = useState('💵');
+  const [editWalletColor, setEditWalletColor] = useState(WALLET_COLORS[0]);
+  const [editWalletDescription, setEditWalletDescription] = useState('');
+
+  // Admin Logs states
+  const [showAdminLogsModal, setShowAdminLogsModal] = useState(false);
+  const [systemLogs, setSystemLogs] = useState([]);
   
   // Budgeting states
   const [monthlyBudget, setMonthlyBudget] = useState(10000);
@@ -75,9 +93,33 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      if (currentUser) {
+        logAction(currentUser.uid, currentUser.email, "เข้าสู่ระบบ", "ผู้ใช้ล็อกอินล็อกอินเข้าสู่ระบบสำเร็จเหมียว~");
+      }
     });
     return () => unsubscribe();
   }, []);
+
+  // 1.5 Listen for admin logs when requested
+  useEffect(() => {
+    if (!user || !showAdminLogsModal) return;
+
+    const isAdmin = ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email?.toLowerCase());
+    if (!isAdmin) return;
+
+    // Listen to all logs and sort on client-side (no index creation required)
+    const qLogs = query(collection(db, 'systemLogs'));
+    const unsubLogs = onSnapshot(qLogs, (snapshot) => {
+      const fetchedLogs = [];
+      snapshot.forEach((doc) => {
+        fetchedLogs.push({ id: doc.id, ...doc.data() });
+      });
+      fetchedLogs.sort((a, b) => b.timestamp - a.timestamp);
+      setSystemLogs(fetchedLogs.slice(0, 150));
+    });
+
+    return () => unsubLogs();
+  }, [user, showAdminLogsModal]);
 
   // 2. Sync wallets and transactions from Firestore once authenticated
   useEffect(() => {
@@ -285,13 +327,36 @@ export default function App() {
     }
   };
 
+  // Helper to log user actions in Firestore systemLogs collection
+  const logAction = async (uid, email, actionType, details) => {
+    try {
+      await addDoc(collection(db, 'systemLogs'), {
+        userId: uid,
+        userEmail: email,
+        actionType,
+        details,
+        timestamp: Date.now(),
+        dateString: new Date().toLocaleString('th-TH', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        })
+      });
+    } catch (err) {
+      console.error("Failed to write system log:", err);
+    }
+  };
+
   // Create Wallet Handler
   const handleCreateWallet = async (e) => {
     e.preventDefault();
     if (!newWalletName.trim()) return;
 
     try {
-      await addDoc(collection(db, 'wallets'), {
+      const docRef = await addDoc(collection(db, 'wallets'), {
         userId: user.uid,
         name: newWalletName.trim(),
         icon: newWalletIcon,
@@ -299,6 +364,9 @@ export default function App() {
         description: newWalletDescription.trim(),
         createdAt: Date.now()
       });
+      
+      logAction(user.uid, user.email, "สร้างกระเป๋าเงิน", `สร้างกระเป๋าเงินใหม่ชื่อ "${newWalletName.trim()}"`);
+      
       setNewWalletName('');
       setNewWalletDescription('');
       setShowAddWalletModal(false);
@@ -328,6 +396,8 @@ export default function App() {
 
       // 2. Delete the wallet doc itself
       await deleteDoc(doc(db, 'wallets', walletId));
+      
+      logAction(user.uid, user.email, "ลบกระเป๋าเงิน", `ลบกระเป๋าเงิน "${walletName}" และข้อมูลธุรกรรมจำนวน ${txToDelete.length} รายการที่เกี่ยวข้อง`);
 
       // 3. Fallback selection to 'all' if selected wallet was deleted
       if (selectedWalletId === walletId) {
@@ -335,6 +405,34 @@ export default function App() {
       }
     } catch (err) {
       console.error("Error deleting wallet:", err);
+    }
+  };
+
+  // Update Wallet details
+  const handleUpdateWallet = async (e) => {
+    e.preventDefault();
+    if (!editingWallet || !editWalletName.trim()) return;
+
+    try {
+      await updateDoc(doc(db, 'wallets', editingWallet.id), {
+        name: editWalletName.trim(),
+        icon: editWalletIcon,
+        color: editWalletColor,
+        description: editWalletDescription.trim(),
+        updatedAt: Date.now()
+      });
+      
+      logAction(
+        user.uid, 
+        user.email, 
+        "แก้ไขกระเป๋าเงิน", 
+        `แก้ไขรายละเอียดกระเป๋าเงิน "${editingWallet.name}" -> "${editWalletName.trim()}" [ไอคอน: ${editWalletIcon}, โทนสีเปลี่ยน, คำอธิบาย: ${editWalletDescription.trim()}]`
+      );
+
+      setShowEditWalletModal(false);
+      setEditingWallet(null);
+    } catch (err) {
+      console.error("Error updating wallet details:", err);
     }
   };
 
@@ -353,6 +451,14 @@ export default function App() {
         isRecurring: false,
         recurringPeriod: ""
       });
+
+      const walletName = wallets.find(w => w.id === newTx.walletId)?.name || 'เงินสด';
+      logAction(
+        user.uid, 
+        user.email, 
+        "เพิ่มธุรกรรม", 
+        `เพิ่มรายการ "${newTx.title}" จำนวน ฿${newTx.amount.toLocaleString()} ในกระเป๋า "${walletName}" [${newTx.type === 'income' ? 'รายรับ' : 'รายจ่าย'}]`
+      );
     } catch (err) {
       console.error("Error adding transaction to Firestore:", err);
     }
@@ -361,7 +467,13 @@ export default function App() {
   // Delete Transaction Handler
   const handleDeleteTransaction = async (id) => {
     try {
+      const tx = transactions.find(t => t.id === id);
+      const details = tx 
+        ? `ลบรายการ "${tx.title}" จำนวน ฿${tx.amount.toLocaleString()} [${tx.type === 'income' ? 'รายรับ' : 'รายจ่าย'}]`
+        : `ลบรายการธุรกรรม ID: ${id}`;
+
       await deleteDoc(doc(db, 'transactions', id));
+      logAction(user.uid, user.email, "ลบธุรกรรม", details);
     } catch (err) {
       console.error("Error deleting transaction:", err);
     }
@@ -386,6 +498,12 @@ export default function App() {
           batch.delete(doc(db, 'transactions', tx.id));
         });
         await batch.commit();
+        logAction(
+          user.uid, 
+          user.email, 
+          "ล้างข้อมูลธุรกรรม", 
+          `ล้างข้อมูลธุรกรรมทั้งหมดในมุมมองกระเป๋า: ${selectedWalletId === 'all' ? 'ทุกกระเป๋า' : selectedWalletId} (ลบไป ${targetTx.length} รายการ)`
+        );
       } catch (err) {
         console.error("Error clearing transactions:", err);
       }
@@ -448,6 +566,7 @@ export default function App() {
       });
       await batch.commit();
       console.log("Demo data loaded to Firestore!");
+      logAction(user.uid, user.email, "โหลดข้อมูลสาธิต", `โหลดข้อมูลรายรับ/รายจ่ายทดสอบจำนวน 4 รายการลงในกระเป๋า "${defaultWallet.name}"`);
     } catch (err) {
       console.error("Error loading demo data:", err);
     }
@@ -467,6 +586,7 @@ export default function App() {
         updatedAt: Date.now()
       }, { merge: true });
       setIsEditingBudget(false);
+      logAction(user.uid, user.email, "ปรับปรุงงบประมาณ", `แก้ไขงบประมาณประจำเดือนใหม่เป็น ฿${parsedBudget.toLocaleString()}`);
     } catch (err) {
       console.error("Error updating budget:", err);
     }
@@ -570,13 +690,24 @@ export default function App() {
             <h4 className="text-sm font-bold text-gray-200">{user.displayName || user.email}</h4>
           </div>
         </div>
-        <button 
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold border border-rose-500/20 transition-all duration-200"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          ออกจากระบบ
-        </button>
+        
+        <div className="flex items-center gap-2">
+          {ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user.email?.toLowerCase()) && (
+            <button 
+              onClick={() => setShowAdminLogsModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 text-xs font-semibold border border-indigo-500/20 transition-all duration-200"
+            >
+              📋 ดูระบบ Log
+            </button>
+          )}
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold border border-rose-500/20 transition-all duration-200"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            ออกจากระบบ
+          </button>
+        </div>
       </div>
 
       {/* 2. HEADER MASCOT */}
@@ -645,23 +776,41 @@ export default function App() {
                     : 'glass-panel border-white/5 hover:border-indigo-500/30 hover:scale-[1.01]'
                 }`}
               >
-                {/* Delete button (visible when multiple wallets exist) */}
-                {wallets.length > 1 && (
+                {/* Action buttons (Edit & Delete) */}
+                <div className="absolute top-2 right-2 flex gap-1 items-center opacity-70 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteWallet(w.id, w.name);
+                      setEditingWallet(w);
+                      setEditWalletName(w.name);
+                      setEditWalletIcon(w.icon);
+                      setEditWalletColor(w.color);
+                      setEditWalletDescription(w.description || '');
+                      setShowEditWalletModal(true);
                     }}
-                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-rose-600 text-gray-300 hover:text-white rounded-xl transition-all duration-200 shadow-sm"
-                    title="ลบกระเป๋าเงินนี้"
+                    className="p-1.5 bg-black/40 hover:bg-indigo-650 text-gray-300 hover:text-white rounded-lg transition-all duration-150"
+                    title="แก้ไขกระเป๋าเงินนี้"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                   </button>
-                )}
+                  
+                  {wallets.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteWallet(w.id, w.name);
+                      }}
+                      className="p-1.5 bg-black/40 hover:bg-rose-650 text-gray-300 hover:text-white rounded-lg transition-all duration-150"
+                      title="ลบกระเป๋าเงินนี้"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-2xl">{w.icon}</span>
-                  <span className="text-[10px] uppercase font-bold tracking-wide text-gray-300 truncate max-w-[70px]">
+                  <span className="text-[10px] uppercase font-bold tracking-wide text-gray-300 truncate max-w-[55px] mr-12">
                     {w.name}
                   </span>
                 </div>
@@ -946,7 +1095,271 @@ export default function App() {
         </div>
       )}
 
-      {/* Footer */}
+      {/* 6. MODAL: ADD WALLET */}
+      {showAddWalletModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel w-full max-w-sm p-6 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500" />
+            
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+                📂 สร้างกระเป๋าเงินใหม่
+              </h3>
+              <button 
+                onClick={() => setShowAddWalletModal(false)}
+                className="p-1 text-gray-500 hover:text-gray-200 hover:bg-white/5 rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateWallet} className="space-y-4">
+              {/* Wallet Name */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">ชื่อกระเป๋าเงิน</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น เงินฝากกสิกร, บัตรเครดิต B"
+                  value={newWalletName}
+                  onChange={(e) => setNewWalletName(e.target.value)}
+                  className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Wallet Description */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">คำอธิบายเพิ่มเติม (ฟรีเท็กซ์)</label>
+                <input
+                  type="text"
+                  placeholder="เช่น ดอกเบี้ย 1.5% ต่อปี, บัตรหมดอายุ 12/28"
+                  value={newWalletDescription}
+                  onChange={(e) => setNewWalletDescription(e.target.value)}
+                  className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Wallet Icon */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">เลือกไอคอนกระเป๋า</label>
+                <div className="flex gap-2 justify-between">
+                  {WALLET_ICONS.map((ico) => (
+                    <button
+                      key={ico}
+                      type="button"
+                      onClick={() => setNewWalletIcon(ico)}
+                      className={`text-2xl p-2 rounded-xl border transition-all duration-200 ${
+                        newWalletIcon === ico 
+                          ? 'bg-indigo-600/30 border-indigo-400 scale-110' 
+                          : 'bg-gray-900/40 border-gray-800 hover:border-gray-700'
+                      }`}
+                    >
+                      {ico}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Wallet Color */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">เลือกโทนสีการ์ด</label>
+                <div className="flex gap-2">
+                  {WALLET_COLORS.map((col, idx) => (
+                    <button
+                      key={col}
+                      type="button"
+                      onClick={() => setNewWalletColor(col)}
+                      className={`w-6 h-6 rounded-full border-2 transition-all ${
+                        newWalletColor === col
+                          ? 'border-white scale-110 ring-2 ring-indigo-500/30'
+                          : 'border-transparent hover:scale-105'
+                      }`}
+                      style={{
+                        background: idx === 0 ? '#4F46E5' : 
+                                    idx === 1 ? '#10B981' : 
+                                    idx === 2 ? '#F43F5E' : 
+                                    idx === 3 ? '#F59E0B' : '#06B6D4'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full mt-4 py-3 bg-indigo-650 hover:bg-indigo-550 active:bg-indigo-700 text-white font-bold rounded-xl shadow-lg hover:shadow-indigo-500/20 transition-all duration-200 flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                สร้างกระเป๋าเงิน
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. MODAL: EDIT WALLET */}
+      {showEditWalletModal && editingWallet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel w-full max-w-sm p-6 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
+            
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+                ✏️ แก้ไขกระเป๋าเงิน
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowEditWalletModal(false);
+                  setEditingWallet(null);
+                }}
+                className="p-1 text-gray-500 hover:text-gray-200 hover:bg-white/5 rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateWallet} className="space-y-4">
+              {/* Wallet Name */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">ชื่อกระเป๋าเงิน</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น เงินฝากประจำ"
+                  value={editWalletName}
+                  onChange={(e) => setEditWalletName(e.target.value)}
+                  className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-550"
+                />
+              </div>
+
+              {/* Wallet Description */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">คำอธิบายกระเป๋าเงิน</label>
+                <input
+                  type="text"
+                  placeholder="เช่น ดอกเบี้ย 1.5% ต่อปี"
+                  value={editWalletDescription}
+                  onChange={(e) => setEditWalletDescription(e.target.value)}
+                  className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-550"
+                />
+              </div>
+
+              {/* Wallet Icon */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">เลือกไอคอนกระเป๋า</label>
+                <div className="flex gap-2 justify-between">
+                  {WALLET_ICONS.map((ico) => (
+                    <button
+                      key={ico}
+                      type="button"
+                      onClick={() => setEditWalletIcon(ico)}
+                      className={`text-2xl p-2 rounded-xl border transition-all duration-200 ${
+                        editWalletIcon === ico 
+                          ? 'bg-teal-600/30 border-teal-400 scale-110' 
+                          : 'bg-gray-900/40 border-gray-800 hover:border-gray-700'
+                      }`}
+                    >
+                      {ico}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Wallet Color */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">เลือกโทนสีการ์ด</label>
+                <div className="flex gap-2">
+                  {WALLET_COLORS.map((col, idx) => (
+                    <button
+                      key={col}
+                      type="button"
+                      onClick={() => setEditWalletColor(col)}
+                      className={`w-6 h-6 rounded-full border-2 transition-all ${
+                        editWalletColor === col
+                          ? 'border-white scale-110 ring-2 ring-teal-500/30'
+                          : 'border-transparent hover:scale-105'
+                      }`}
+                      style={{
+                        background: idx === 0 ? '#4F46E5' : 
+                                    idx === 1 ? '#10B981' : 
+                                    idx === 2 ? '#F43F5E' : 
+                                    idx === 3 ? '#F59E0B' : '#06B6D4'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full mt-4 py-3 bg-teal-650 hover:bg-teal-550 active:bg-teal-700 text-white font-bold rounded-xl shadow-lg hover:shadow-teal-500/20 transition-all duration-200 flex items-center justify-center gap-1.5"
+              >
+                บันทึกการแก้ไข
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODAL: ADMIN SYSTEM LOGS (Admin Only) */}
+      {showAdminLogsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel w-full max-w-2xl p-6 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500" />
+            
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-150 flex items-center gap-2">
+                  📋 ระบบ Log การใช้งานระบบ (Admin View)
+                </h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">อีเมลผู้ดูแลระบบ: {user.email}</p>
+              </div>
+              <button 
+                onClick={() => setShowAdminLogsModal(false)}
+                className="p-1 text-gray-500 hover:text-gray-250 hover:bg-white/5 rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Log Stream Container */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+              {systemLogs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <span className="text-3xl mb-2">📡</span>
+                  <p className="text-gray-400 font-semibold">กำลังเชื่อมต่อ หรือยังไม่มีข้อมูล Log บันทึกเหมียว~</p>
+                </div>
+              ) : (
+                systemLogs.map((log) => (
+                  <div 
+                    key={log.id} 
+                    className="p-3 bg-gray-950/45 border border-white/5 rounded-xl text-xs flex flex-col sm:flex-row sm:items-start justify-between gap-2 transition-all hover:bg-gray-950/65"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-wide uppercase ${
+                          log.actionType === 'เข้าสู่ระบบ' ? 'bg-indigo-500/20 text-indigo-400' :
+                          log.actionType === 'ลบกระเป๋าเงิน' || log.actionType === 'ลบธุรกรรม' ? 'bg-rose-500/20 text-rose-400' :
+                          log.actionType === 'สร้างกระเป๋าเงิน' || log.actionType === 'เพิ่มธุรกรรม' ? 'bg-emerald-500/20 text-emerald-400' :
+                          log.actionType === 'แก้ไขกระเป๋าเงิน' || log.actionType === 'ปรับปรุงงบประมาณ' ? 'bg-cyan-500/20 text-cyan-400' :
+                          'bg-amber-500/20 text-amber-400'
+                        }`}>
+                          {log.actionType}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-semibold">{log.userEmail}</span>
+                      </div>
+                      <p className="text-gray-200 font-medium leading-relaxed">{log.details}</p>
+                    </div>
+                    <div className="text-[10px] text-gray-500 font-mono sm:text-right flex-shrink-0 self-end sm:self-start">
+                      {log.dateString || new Date(log.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <footer className="mt-12 text-center text-xs text-gray-600">
         <p>© 2026 Meow Tracker App. All rights reserved. ❤️ Design and Coded for Cat Lovers.</p>
       </footer>
