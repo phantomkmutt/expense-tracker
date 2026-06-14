@@ -62,6 +62,11 @@ export default function App() {
   const [newWalletName, setNewWalletName] = useState('');
   const [newWalletIcon, setNewWalletIcon] = useState('💵');
   const [newWalletColor, setNewWalletColor] = useState(WALLET_COLORS[0]);
+  
+  // Budgeting states
+  const [monthlyBudget, setMonthlyBudget] = useState(10000);
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState('');
 
   // 1. Listen for authentication changes
   useEffect(() => {
@@ -104,9 +109,23 @@ export default function App() {
       setTransactions(fetchedTx);
     });
 
+    // Listen to User Settings (Budget)
+    const unsubSettings = onSnapshot(doc(db, 'userSettings', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setMonthlyBudget(docSnap.data().monthlyBudget || 10000);
+      } else {
+        // Initialize settings if they don't exist
+        setDoc(doc(db, 'userSettings', user.uid), {
+          monthlyBudget: 10000,
+          updatedAt: Date.now()
+        }).catch(err => console.error("Error setting default budget:", err));
+      }
+    });
+
     return () => {
       unsubWallets();
       unsubTransactions();
+      unsubSettings();
     };
   }, [user]);
 
@@ -430,6 +449,25 @@ export default function App() {
     }
   };
 
+  // Update Budget Handler
+  const handleUpdateBudget = async (e) => {
+    e.preventDefault();
+    const parsedBudget = parseFloat(budgetInput);
+    if (isNaN(parsedBudget) || parsedBudget < 0) {
+      alert('กรุณากรอกงบประมาณที่ถูกต้องเหมียว~');
+      return;
+    }
+    try {
+      await setDoc(doc(db, 'userSettings', user.uid), {
+        monthlyBudget: parsedBudget,
+        updatedAt: Date.now()
+      }, { merge: true });
+      setIsEditingBudget(false);
+    } catch (err) {
+      console.error("Error updating budget:", err);
+    }
+  };
+
   // --- STATS & BALANCE CALCULATIONS ---
   // Filters transactions by selected wallet
   const displayTransactions = selectedWalletId === 'all'
@@ -445,6 +483,19 @@ export default function App() {
     .reduce((sum, t) => sum + t.amount, 0);
 
   const balance = totalIncome - totalExpense;
+
+  // คำนวณรายจ่ายเฉพาะของเดือนปัจจุบันรวมทุกกระเป๋าเงิน (ตามเงื่อนไขงบประมาณประจำเดือน)
+  const totalCurrentMonthExpenses = transactions
+    .filter(t => {
+      if (t.type !== 'expense') return false;
+      const tDate = new Date(t.timestamp);
+      const today = new Date();
+      return tDate.getFullYear() === today.getFullYear() && 
+             tDate.getMonth() === today.getMonth();
+    })
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const budgetPercent = monthlyBudget > 0 ? (totalCurrentMonthExpenses / monthlyBudget) * 100 : 0;
 
   // Render Loader
   if (loading) {
@@ -526,7 +577,7 @@ export default function App() {
 
       {/* 2. HEADER MASCOT */}
       <header className="flex flex-col items-center mb-6 text-center animate-fade-in-up">
-        <CatMascot balance={balance} />
+        <CatMascot balance={balance} budgetPercent={budgetPercent} />
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mt-5 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center justify-center gap-2">
           <Sparkles className="w-7 h-7 text-indigo-400 animate-pulse" />
           เหมียวแทร็กเกอร์ (Meow Tracker)
@@ -670,6 +721,73 @@ export default function App() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* 4.5 BUDGETING & PROGRESS BAR BOARD */}
+      <section className="glass-panel rounded-2xl p-5 mb-6 animate-fade-in-up border border-indigo-500/10">
+        <div className="flex justify-between items-center mb-3">
+          <div>
+            <h3 className="text-sm font-bold text-gray-200">
+              📊 งบประมาณรายจ่ายประจำเดือนนี้ (Budget)
+            </h3>
+            <div className="text-[11px] text-gray-400 mt-0.5">
+              รวมรายจ่ายของเดือนนี้: ฿{totalCurrentMonthExpenses.toLocaleString()} / งบประมาณ 
+              {isEditingBudget ? (
+                <form onSubmit={handleUpdateBudget} className="inline-flex items-center gap-1.5 ml-1.5">
+                  <input
+                    type="number"
+                    value={budgetInput}
+                    onChange={(e) => setBudgetInput(e.target.value)}
+                    className="w-20 px-2 py-0.5 bg-gray-900 border border-gray-800 rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder={monthlyBudget.toString()}
+                    required
+                  />
+                  <button type="submit" className="text-[10px] bg-indigo-650 hover:bg-indigo-550 px-2 py-0.5 rounded font-bold text-white">บันทึก</button>
+                  <button type="button" onClick={() => setIsEditingBudget(false)} className="text-[10px] bg-gray-850 hover:bg-gray-750 px-2 py-0.5 rounded font-bold text-gray-400">ยกเลิก</button>
+                </form>
+              ) : (
+                <span className="ml-1 text-gray-200 font-semibold">
+                  ฿{monthlyBudget.toLocaleString()}
+                  <button 
+                    onClick={() => {
+                      setBudgetInput(monthlyBudget.toString());
+                      setIsEditingBudget(true);
+                    }}
+                    className="ml-2 text-indigo-400 hover:text-indigo-300 font-bold hover:underline"
+                  >
+                    [แก้ไข]
+                  </button>
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="text-right">
+            <span className={`text-base font-bold font-sans ${
+              budgetPercent > 80 ? 'text-rose-400 animate-pulse' :
+              budgetPercent >= 50 ? 'text-amber-400' :
+              'text-emerald-400'
+            }`}>
+              {budgetPercent.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+
+        {/* Progress Bar Container */}
+        <div className="w-full h-3 bg-gray-900/80 rounded-full overflow-hidden border border-gray-800">
+          <div 
+            className={`h-full rounded-full transition-all duration-500 ${
+              budgetPercent > 80 ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)] animate-pulse' :
+              budgetPercent >= 50 ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.3)]' :
+              'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+            }`}
+            style={{ width: `${Math.min(budgetPercent, 100)}%` }}
+          />
+        </div>
+        {budgetPercent > 80 && (
+          <p className="text-[10px] text-rose-400 font-bold mt-2 animate-pulse flex items-center gap-1">
+            ⚠️ ใช้จ่ายทะลุ 80% ของงบประมาณแล้ว! กรุณาควบคุมการใช้จ่ายด้วยเหมียว~
+          </p>
+        )}
       </section>
 
       {/* 5. FORM AND LIST WORKSPACE */}

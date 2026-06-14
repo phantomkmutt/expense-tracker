@@ -4,13 +4,19 @@ import React from 'react';
  * CatMascot Component
  * @param {Object} props
  * @param {number} props.balance - The current net balance (income - expense)
+ * @param {number} props.budgetPercent - The percentage of budget spent this month
  */
-export default function CatMascot({ balance }) {
+export default function CatMascot({ balance, budgetPercent = 0 }) {
   // Determine the cat's mood state
   let mood = 'neutral'; // balance === 0
   if (balance > 0) {
     mood = 'happy';
   } else if (balance < 0) {
+    mood = 'sad';
+  }
+
+  // Override mood if budget utilization exceeds 80% (Warning State)
+  if (budgetPercent > 80) {
     mood = 'sad';
   }
 
@@ -256,9 +262,10 @@ export default function CatMascot({ balance }) {
         mood === 'sad' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' :
         'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
       }`}>
-        {mood === 'happy' && 'เหมียวมีความสุขจัง! เงินเหลือเฟือ 🥳'}
-        {mood === 'sad' && 'เหมียวเครียดนะนั่น! เงินติดลบแล้ววว 😭'}
-        {mood === 'neutral' && 'ไม่มีเงินเลยเหรอเหมียว? ลองบันทึกดูสิ 🤔'}
+        {budgetPercent > 80 && 'เหมียวเตือนนะ! ใช้เงินเกิน 80% ของงบแล้วนะ!! 😱'}
+        {budgetPercent <= 80 && mood === 'happy' && 'เหมียวมีความสุขจัง! เงินเหลือเฟือ 🥳'}
+        {budgetPercent <= 80 && mood === 'sad' && 'เหมียวเครียดนะนั่น! เงินติดลบแล้ววว 😭'}
+        {budgetPercent <= 80 && mood === 'neutral' && 'ไม่มีเงินเลยเหรอเหมียว? ลองบันทึกดูสิ 🤔'}
       </div>
     </div>
   );
