@@ -16,6 +16,7 @@ import Login from './Login';
 import CatMascot from './components/CatMascot';
 import TransactionForm from './components/TransactionForm';
 import TransactionList from './components/TransactionList';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { 
   Sparkles, 
   Wallet, 
@@ -789,6 +790,9 @@ export default function App() {
           </p>
         )}
       </section>
+
+      {/* 4.6 SMART ANALYTICS DASHBOARD */}
+      <AnalyticsDashboard transactions={transactions} />
 
       {/* 5. FORM AND LIST WORKSPACE */}
       <main className="grid grid-cols-1 md:grid-cols-5 gap-6">
