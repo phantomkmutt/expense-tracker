@@ -63,6 +63,7 @@ export default function App() {
   const [newWalletName, setNewWalletName] = useState('');
   const [newWalletIcon, setNewWalletIcon] = useState('💵');
   const [newWalletColor, setNewWalletColor] = useState(WALLET_COLORS[0]);
+  const [newWalletDescription, setNewWalletDescription] = useState('');
   
   // Budgeting states
   const [monthlyBudget, setMonthlyBudget] = useState(10000);
@@ -295,9 +296,11 @@ export default function App() {
         name: newWalletName.trim(),
         icon: newWalletIcon,
         color: newWalletColor,
+        description: newWalletDescription.trim(),
         createdAt: Date.now()
       });
       setNewWalletName('');
+      setNewWalletDescription('');
       setShowAddWalletModal(false);
     } catch (err) {
       console.error("Error adding wallet:", err);
@@ -668,6 +671,11 @@ export default function App() {
                     ฿{wBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </h4>
                 </div>
+                {w.description && (
+                  <p className="text-[10px] text-gray-300/85 mt-2 pt-1.5 border-t border-white/10 italic truncate" title={w.description}>
+                    {w.description}
+                  </p>
+                )}
               </div>
             );
           })}
@@ -864,6 +872,18 @@ export default function App() {
                   placeholder="เช่น เงินฝากกสิกร, บัตรเครดิต B"
                   value={newWalletName}
                   onChange={(e) => setNewWalletName(e.target.value)}
+                  className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Wallet Description */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5">คำอธิบายเพิ่มเติม (ฟรีเท็กซ์)</label>
+                <input
+                  type="text"
+                  placeholder="เช่น ดอกเบี้ย 1.5% ต่อปี, บัตรหมดอายุ 12/28"
+                  value={newWalletDescription}
+                  onChange={(e) => setNewWalletDescription(e.target.value)}
                   className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
