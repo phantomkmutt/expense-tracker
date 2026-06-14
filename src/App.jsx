@@ -82,6 +82,10 @@ export default function App() {
   // Admin Logs states
   const [showAdminLogsModal, setShowAdminLogsModal] = useState(false);
   const [systemLogs, setSystemLogs] = useState([]);
+
+  // Saved options for dropdown lists
+  const [savedTitles, setSavedTitles] = useState([]);
+  const [savedTags, setSavedTags] = useState([]);
   
   // Budgeting states
   const [monthlyBudget, setMonthlyBudget] = useState(10000);
@@ -153,14 +157,19 @@ export default function App() {
       setTransactions(fetchedTx);
     });
 
-    // Listen to User Settings (Budget)
+    // Listen to User Settings (Budget, Titles, Tags)
     const unsubSettings = onSnapshot(doc(db, 'userSettings', user.uid), (docSnap) => {
       if (docSnap.exists()) {
-        setMonthlyBudget(docSnap.data().monthlyBudget || 10000);
+        const data = docSnap.data();
+        setMonthlyBudget(data.monthlyBudget || 10000);
+        setSavedTitles(data.savedTitles || []);
+        setSavedTags(data.savedTags || []);
       } else {
         // Initialize settings if they don't exist
         setDoc(doc(db, 'userSettings', user.uid), {
           monthlyBudget: 10000,
+          savedTitles: [],
+          savedTags: [],
           updatedAt: Date.now()
         }).catch(err => console.error("Error setting default budget:", err));
       }
@@ -592,6 +601,34 @@ export default function App() {
     }
   };
 
+  // Save Custom Title to User Settings (for dropdown list in future)
+  const handleSaveCustomTitle = async (newTitle) => {
+    if (!user || !newTitle.trim() || savedTitles.includes(newTitle.trim())) return;
+    try {
+      const updatedTitles = [...savedTitles, newTitle.trim()];
+      await setDoc(doc(db, 'userSettings', user.uid), {
+        savedTitles: updatedTitles
+      }, { merge: true });
+      logAction(user.uid, user.email, "บันทึกตัวเลือกดร็อปดาวน์", `เพิ่มตัวเลือกชื่อรายการใหม่: "${newTitle.trim()}"`);
+    } catch (err) {
+      console.error("Error saving custom title option:", err);
+    }
+  };
+
+  // Save Custom Tag to User Settings (for dropdown list in future)
+  const handleSaveCustomTag = async (newTag) => {
+    if (!user || !newTag.trim() || savedTags.includes(newTag.trim())) return;
+    try {
+      const updatedTags = [...savedTags, newTag.trim()];
+      await setDoc(doc(db, 'userSettings', user.uid), {
+        savedTags: updatedTags
+      }, { merge: true });
+      logAction(user.uid, user.email, "บันทึกตัวเลือกดร็อปดาวน์", `เพิ่มตัวเลือกแท็กใหม่: "${newTag.trim()}"`);
+    } catch (err) {
+      console.error("Error saving custom tag option:", err);
+    }
+  };
+
   // --- STATS & BALANCE CALCULATIONS ---
   // Filters transactions by selected wallet
   const displayTransactions = selectedWalletId === 'all'
@@ -957,6 +994,10 @@ export default function App() {
             onAddTransaction={handleAddTransaction} 
             wallets={wallets}
             selectedWalletId={selectedWalletId}
+            savedTitles={savedTitles}
+            savedTags={savedTags}
+            onSaveCustomTitle={handleSaveCustomTitle}
+            onSaveCustomTag={handleSaveCustomTag}
           />
           
           {/* Quick Actions Panel */}

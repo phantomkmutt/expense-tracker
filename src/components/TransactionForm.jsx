@@ -1,20 +1,62 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, FileText, Wallet, Tag, RefreshCw } from 'lucide-react';
 
+const DEFAULT_TITLES = [
+  "ค่าอาหาร",
+  "ซื้อขนมแมวเลีย",
+  "ค่าเดินทาง",
+  "เงินเดือน",
+  "ช้อปปิ้ง",
+  "ค่าบำรุงรักษา",
+  "ความบันเทิง"
+];
+
+const DEFAULT_TAGS = [
+  "#อาหาร",
+  "#เดินทาง",
+  "#ช้อปปิ้ง",
+  "#ของใช้แมว",
+  "#ความบันเทิง",
+  "#สุขภาพ",
+  "#รายได้พิเศษ"
+];
+
 /**
  * TransactionForm Component
  * @param {Object} props
  * @param {Function} props.onAddTransaction - Callback function when a new transaction is added
  * @param {Array} props.wallets - List of active wallets
  * @param {string} props.selectedWalletId - Currently selected wallet ID ('all' or specific ID)
+ * @param {Array} props.savedTitles - User's custom saved titles from Firestore
+ * @param {Array} props.savedTags - User's custom saved tags from Firestore
+ * @param {Function} props.onSaveCustomTitle - Callback to persist a custom title in userSettings
+ * @param {Function} props.onSaveCustomTag - Callback to persist a custom tag in userSettings
  */
-export default function TransactionForm({ onAddTransaction, wallets = [], selectedWalletId }) {
-  const [title, setTitle] = useState('');
+export default function TransactionForm({
+  onAddTransaction,
+  wallets = [],
+  selectedWalletId,
+  savedTitles = [],
+  savedTags = [],
+  onSaveCustomTitle,
+  onSaveCustomTag
+}) {
+  const mergedTitles = [...new Set([...DEFAULT_TITLES, ...savedTitles])];
+  const mergedTags = [...new Set([...DEFAULT_TAGS, ...savedTags])];
+
+  // Form states
+  const [selectedTitleOpt, setSelectedTitleOpt] = useState(mergedTitles[0] || '');
+  const [customTitle, setCustomTitle] = useState('');
+  const [saveTitleForFuture, setSaveTitleForFuture] = useState(false);
+
+  const [selectedTagOpt, setSelectedTagOpt] = useState(mergedTags[0] || '');
+  const [customTag, setCustomTag] = useState('');
+  const [saveTagForFuture, setSaveTagForFuture] = useState(false);
+
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('income'); // 'income' or 'expense'
   const [walletId, setWalletId] = useState('');
-  const [tagsText, setTagsText] = useState(''); // State สำหรับรับข้อความแท็ก
-  const [isRecurring, setIsRecurring] = useState(false); // State สำหรับตั้งค่ารายการประจำเดือน
+  const [isRecurring, setIsRecurring] = useState(false);
   const [error, setError] = useState('');
 
   // Update selected wallet inside form when selectedWalletId changes
@@ -26,25 +68,60 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
     }
   }, [selectedWalletId, wallets]);
 
-  // ฟังก์ชันแยกคำและจัดรูปแบบแท็ก (เช่น " #อาหาร, #ขนม" -> ["#อาหาร", "#ขนม"])
+  // Set default dropdown values if merged lists update
+  useEffect(() => {
+    if (!selectedTitleOpt && mergedTitles.length > 0) {
+      setSelectedTitleOpt(mergedTitles[0]);
+    }
+    if (!selectedTagOpt && mergedTags.length > 0) {
+      setSelectedTagOpt(mergedTags[0]);
+    }
+  }, [savedTitles, savedTags]);
+
+  // Tag helper parser
   const parseTags = (text) => {
     if (!text || !text.trim()) return [];
-    
     return text
-      .split(/[,\s]+/)               // แยกด้วยเครื่องหมายจุลภาค (,) หรือการเว้นวรรค
-      .map(tag => tag.trim())         // ลบช่องว่างหัวท้ายของแต่ละคำ
-      .filter(tag => tag.length > 0)  // กรองเอาเฉพาะคำที่ไม่ใช่ค่าว่าง
-      .map(tag => tag.startsWith('#') ? tag : `#${tag}`); // บังคับให้เริ่มด้วยเครื่องหมาย # เสมอ
+      .split(/[,\s]+/)
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0)
+      .map(tag => tag.startsWith('#') ? tag : `#${tag}`);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
 
-    // Form validations
-    if (!title.trim()) {
-      setError('กรุณากรอกชื่อรายการ');
-      return;
+    // Resolve Title
+    let finalTitle = "";
+    if (selectedTitleOpt === "__custom__") {
+      finalTitle = customTitle.trim();
+      if (!finalTitle) {
+        setError('กรุณากรอกชื่อรายการที่คุณระบุเอง');
+        return;
+      }
+      // If user chose to persist it for the future
+      if (saveTitleForFuture && onSaveCustomTitle) {
+        onSaveCustomTitle(finalTitle);
+      }
+    } else {
+      finalTitle = selectedTitleOpt;
+    }
+
+    // Resolve Tags
+    let finalTags = [];
+    if (selectedTagOpt === "__custom__") {
+      finalTags = parseTags(customTag);
+      if (finalTags.length === 0) {
+        setError('กรุณาระบุแท็กอย่างน้อย 1 แท็ก');
+        return;
+      }
+      // If user chose to persist it for the future, save each tag to settings
+      if (saveTagForFuture && onSaveCustomTag) {
+        finalTags.forEach(tag => onSaveCustomTag(tag));
+      }
+    } else {
+      finalTags = [selectedTagOpt];
     }
 
     const parsedAmount = parseFloat(amount);
@@ -58,15 +135,14 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
       return;
     }
 
-    // Call callback with new transaction item including tags & recurring info
     onAddTransaction({
-      title: title.trim(),
+      title: finalTitle,
       amount: parsedAmount,
       type,
       walletId,
-      tags: parseTags(tagsText),
-      isRecurring, // บันทึกสิทธิ์บูลีน
-      recurringPeriod: isRecurring ? 'monthly' : '', // กำหนดช่วงรอบเวลา
+      tags: finalTags,
+      isRecurring,
+      recurringPeriod: isRecurring ? 'monthly' : '',
       date: new Date().toLocaleString('th-TH', {
         year: 'numeric',
         month: 'short',
@@ -76,11 +152,17 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
       })
     });
 
-    // Reset Form Fields (keep current walletId)
-    setTitle('');
+    // Reset Form Fields
+    setCustomTitle('');
+    setCustomTag('');
     setAmount('');
-    setTagsText('');
-    setIsRecurring(false); // ล้างสิทธิ์รายการประจำเดือน
+    setSaveTitleForFuture(false);
+    setSaveTagForFuture(false);
+    setIsRecurring(false);
+
+    // Keep standard selections
+    if (mergedTitles.length > 0) setSelectedTitleOpt(mergedTitles[0]);
+    if (mergedTags.length > 0) setSelectedTagOpt(mergedTags[0]);
   };
 
   return (
@@ -98,25 +180,61 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
           </div>
         )}
 
-        {/* Title Input */}
+        {/* Title Selection Dropdown */}
         <div>
-          <label htmlFor="title-input" className="block text-sm font-medium text-gray-400 mb-1.5">
+          <label htmlFor="title-select" className="block text-sm font-medium text-gray-400 mb-1.5">
             ชื่อรายการ
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <FileText className="h-4 w-4 text-gray-500" />
             </div>
-            <input
-              id="title-input"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="เช่น เงินเดือน, ซื้อกาแฟ, ค่าอาหาร"
-              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
-            />
+            <select
+              id="title-select"
+              value={selectedTitleOpt}
+              onChange={(e) => setSelectedTitleOpt(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
+            >
+              {mergedTitles.map((opt, idx) => (
+                <option key={idx} value={opt} className="bg-[#0b0f19] text-gray-200">
+                  {opt}
+                </option>
+              ))}
+              <option value="__custom__" className="bg-[#0b0f19] text-indigo-400 font-bold">
+                ✏️ ระบุชื่อรายการเอง...
+              </option>
+            </select>
           </div>
         </div>
+
+        {/* Title Custom Text Input */}
+        {selectedTitleOpt === "__custom__" && (
+          <div className="p-3 bg-indigo-950/20 border border-indigo-500/10 rounded-xl space-y-2.5 animate-fade-in">
+            <label className="block text-xs font-semibold text-indigo-350">
+              ระบุชื่อรายการ (ฟรีเท็กซ์)
+            </label>
+            <input
+              type="text"
+              required
+              value={customTitle}
+              onChange={(e) => setCustomTitle(e.target.value)}
+              placeholder="เช่น ซื้อกาแฟส้ม, เติมน้ำมันรถ"
+              className="block w-full px-3 py-2 bg-gray-900/80 border border-gray-800 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <div className="flex items-center gap-2 text-gray-300">
+              <input
+                id="save-title-checkbox"
+                type="checkbox"
+                checked={saveTitleForFuture}
+                onChange={(e) => setSaveTitleForFuture(e.target.checked)}
+                className="w-3.5 h-3.5 rounded text-indigo-600 bg-gray-900/60 border-gray-850 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="save-title-checkbox" className="text-xs select-none cursor-pointer hover:text-indigo-400 font-medium transition-all">
+                💾 ตั้งค่าเป็นตัวเลือกในดร็อปดาวน์สำหรับอนาคต (Save option)
+              </label>
+            </div>
+          </div>
+        )}
 
         {/* Wallet Selection Dropdown */}
         <div>
@@ -131,7 +249,7 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
               id="wallet-select"
               value={walletId}
               onChange={(e) => setWalletId(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
+              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
             >
               {wallets.length === 0 ? (
                 <option value="" disabled>กำลังโหลดกระเป๋าเงิน...</option>
@@ -146,28 +264,64 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
           </div>
         </div>
 
-        {/* Tags Input */}
+        {/* Tags Selection Dropdown */}
         <div>
-          <label htmlFor="tags-input" className="block text-sm font-medium text-gray-400 mb-1.5">
-            แท็ก / หมวดหมู่ย่อย (คั่นด้วยจุลภาคหรือเว้นวรรค)
+          <label htmlFor="tag-select" className="block text-sm font-medium text-gray-400 mb-1.5">
+            เลือกแท็ก / หมวดหมู่ย่อย
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Tag className="h-4 w-4 text-gray-500" />
             </div>
-            <input
-              id="tags-input"
-              type="text"
-              value={tagsText}
-              onChange={(e) => setTagsText(e.target.value)}
-              placeholder="เช่น #อาหาร, #ของหวาน, #ทริปเชียงใหม่"
-              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
-            />
+            <select
+              id="tag-select"
+              value={selectedTagOpt}
+              onChange={(e) => setSelectedTagOpt(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
+            >
+              {mergedTags.map((opt, idx) => (
+                <option key={idx} value={opt} className="bg-[#0b0f19] text-gray-200">
+                  {opt}
+                </option>
+              ))}
+              <option value="__custom__" className="bg-[#0b0f19] text-indigo-400 font-bold">
+                ✏️ ระบุแท็กเอง (ฟรีเท็กซ์)...
+              </option>
+            </select>
           </div>
-          <p className="text-[10px] text-gray-500 mt-1">
-            * ระบบจะทำการสร้างเครื่องหมาย # นำหน้าคำย่อยให้คุณโดยอัตโนมัติเหมียว~
-          </p>
         </div>
+
+        {/* Tags Custom Text Input */}
+        {selectedTagOpt === "__custom__" && (
+          <div className="p-3 bg-indigo-950/20 border border-indigo-500/10 rounded-xl space-y-2.5 animate-fade-in">
+            <label className="block text-xs font-semibold text-indigo-350">
+              ระบุแท็ก (แยกหลายคำด้วยช่องว่างหรือจุลภาค)
+            </label>
+            <input
+              type="text"
+              required
+              value={customTag}
+              onChange={(e) => setCustomTag(e.target.value)}
+              placeholder="เช่น #อาหารเย็น, #ช้อปปิ้งออนไลน์"
+              className="block w-full px-3 py-2 bg-gray-900/80 border border-gray-800 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <div className="flex items-center gap-2 text-gray-300">
+              <input
+                id="save-tag-checkbox"
+                type="checkbox"
+                checked={saveTagForFuture}
+                onChange={(e) => setSaveTagForFuture(e.target.checked)}
+                className="w-3.5 h-3.5 rounded text-indigo-600 bg-gray-900/60 border-gray-850 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="save-tag-checkbox" className="text-xs select-none cursor-pointer hover:text-indigo-400 font-medium transition-all">
+                💾 ตั้งค่าเป็นตัวเลือกในดร็อปดาวน์สำหรับอนาคต (Save option)
+              </label>
+            </div>
+            <p className="text-[9px] text-gray-500">
+              * ระบบจะสร้างเครื่องหมาย # นำหน้าแท็กอัตโนมัติเหมียว~
+            </p>
+          </div>
+        )}
 
         {/* Checkbox for Recurring Transactions */}
         <div className="flex items-center gap-2.5 py-1 text-gray-300">
@@ -176,7 +330,7 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
             type="checkbox"
             checked={isRecurring}
             onChange={(e) => setIsRecurring(e.target.checked)}
-            className="w-4 h-4 rounded text-indigo-600 bg-gray-900/60 border-gray-800 focus:ring-indigo-500 focus:ring-offset-gray-900 cursor-pointer"
+            className="w-4 h-4 rounded text-indigo-600 bg-gray-900/60 border-gray-880 focus:ring-indigo-500 focus:ring-offset-gray-900 cursor-pointer"
           />
           <label htmlFor="recurring-checkbox" className="text-sm font-semibold select-none cursor-pointer flex items-center gap-1.5 hover:text-indigo-400 transition-all">
             <RefreshCw className={`w-3.5 h-3.5 ${isRecurring ? 'animate-spin' : ''}`} />
@@ -216,7 +370,7 @@ export default function TransactionForm({ onAddTransaction, wallets = [], select
               id="type-select"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
+              className="block w-full px-3 py-2.5 bg-gray-900/60 border border-gray-800 rounded-xl text-gray-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 cursor-pointer"
             >
               <option value="income" className="bg-[#0b0f19] text-emerald-400">🟢 รายรับ (Income)</option>
               <option value="expense" className="bg-[#0b0f19] text-rose-400">🔴 รายจ่าย (Expense)</option>
