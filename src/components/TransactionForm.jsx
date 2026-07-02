@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PlusCircle, FileText, Wallet, Tag, RefreshCw } from 'lucide-react';
-import Tesseract from 'tesseract.js';
 
 const DEFAULT_TITLES = [
   "ค่าอาหาร",
@@ -84,7 +83,8 @@ export default function TransactionForm({
   savedTitles = [],
   savedTags = [],
   onSaveCustomTitle,
-  onSaveCustomTag
+  onSaveCustomTag,
+  onDeleteCustomTag
 }) {
   const mergedTitles = [...new Set([...DEFAULT_TITLES, ...savedTitles])];
   const mergedTags = [...new Set([...DEFAULT_TAGS, ...savedTags])];
@@ -103,11 +103,23 @@ export default function TransactionForm({
   const [walletId, setWalletId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [error, setError] = useState('');
+  const [isAdminMode, setIsAdminMode] = useState(false);
+
+  // Function to delete tag (Logic requested by step 3)
+  const handleDeleteTag = (tag) => {
+    if (onDeleteCustomTag) {
+      onDeleteCustomTag(tag);
+    }
+  };
+
 
   // OCR scanning states
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrProgress, setOcrProgress] = useState('');
   const fileInputRef = useRef(null);
+
+  // State สำหรับการวิเคราะห์ผ่าน Gemini API
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Update selected wallet inside form when selectedWalletId changes
   useEffect(() => {
@@ -165,61 +177,96 @@ export default function TransactionForm({
     }
   };
 
-  // จัดการอัปโหลดและสแกนรูปภาพด้วย Tesseract.js (OCR)
+  // แปลงไฟล์รูปภาพเป็น Base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  // จัดการอัปโหลดและวิเคราะห์รูปภาพด้วย Gemini API
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setOcrLoading(true);
-    setOcrProgress('กำลังโหลดไฟล์ภาพ...');
+    setIsAnalyzing(true);
     setError('');
 
     try {
-      const result = await Tesseract.recognize(
-        file,
-        'tha+eng',
+      const base64Data = await fileToBase64(file);
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('ไม่พบข้อมูล Gemini API Key ในไฟล์ .env');
+      }
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              setOcrProgress(`กำลังสแกน... ${(m.progress * 100).toFixed(0)}%`);
-            } else {
-              setOcrProgress('กำลังดึงข้อความจากภาพ...');
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: 'Analyze this Thai bank transfer slip. Extract the transfer amount (number only, remove commas) and the receiver\'s name/account. Return ONLY a valid JSON object in this exact format without markdown blocks: {"amount": "1500.00", "title": "โอนไป: ชื่อผู้รับ"}'
+                  },
+                  {
+                    inlineData: {
+                      mimeType: file.type || 'image/jpeg',
+                      data: base64Data
+                    }
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json'
             }
-          }
+          })
         }
       );
 
-      const text = result.data.text;
-      console.log("OCR Extracted Text:\n", text);
-
-      if (!text || !text.trim()) {
-        setError('ไม่สามารถถอดข้อความจากรูปภาพได้ กรุณาเลือกสลิปที่ตัวหนังสือชัดเจนเหมียว~');
-        setOcrLoading(false);
-        return;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Gemini API Error details:', errorText);
+        throw new Error(`Gemini API error! status: ${response.status}`);
       }
 
-      const parsed = extractDataFromText(text);
-      if (parsed && (parsed.amount || parsed.title !== 'รายการโอนเงิน (OCR)')) {
-        if (parsed.title) {
+      const result = await response.json();
+      const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!textResponse) {
+        throw new Error('ไม่สามารถอ่านคำตอบจาก Gemini API ได้');
+      }
+
+      const parsedData = JSON.parse(textResponse.trim());
+      if (parsedData && (parsedData.amount || parsedData.title)) {
+        if (parsedData.title) {
           setSelectedTitleOpt('__custom__');
-          setCustomTitle(parsed.title);
+          setCustomTitle(parsedData.title);
         }
-        if (parsed.amount) {
-          setAmount(parsed.amount);
+        if (parsedData.amount) {
+          setAmount(parsedData.amount);
         }
-        // สลับประเภทเป็นรายจ่ายอัตโนมัติหากพบคำสำคัญ
-        if (text.includes('เงินออก') || text.includes('โอนเงิน') || text.includes('ไปยัง') || text.includes('ผู้รับโอน')) {
-          setType('expense');
-        }
+        // ตั้งค่าประเภทเป็นรายจ่ายอัตโนมัติสำหรับการโอนเงิน
+        setType('expense');
       } else {
-        setError('สแกนเสร็จสิ้น แต่ไม่พบรูปแบบจำนวนเงินหรือผู้รับโอนในรูปภาพนี้เหมียว~');
+        throw new Error('ไม่พบข้อมูลจำนวนเงินหรือผู้รับโอนจากสลิป');
       }
     } catch (err) {
-      console.error("OCR scanning error:", err);
-      setError('การสแกนรูปภาพล้มเหลว กรุณาลองใหม่อีกครั้งเหมียว~');
+      console.error("Gemini slip analysis error:", err);
+      alert(err.message || 'วิเคราะห์สลิปล้มเหลว กรุณาลองใหม่อีกครั้ง');
+      setError(err.message || 'วิเคราะห์สลิปล้มเหลว กรุณาลองใหม่อีกครั้ง');
     } finally {
-      setOcrLoading(false);
-      setOcrProgress('');
+      setIsAnalyzing(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -326,7 +373,7 @@ export default function TransactionForm({
             className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-400 border border-emerald-500/35 hover:border-emerald-450 rounded-xl transition-all duration-200 shadow-sm"
             title="อัปโหลดสลิป/ภาพหน้าจอเพื่อถอดข้อความอัตโนมัติ"
           >
-            📷 สแกนรูปภาพ (OCR)
+            📷 สแกนรูปภาพ (Gemini)
           </button>
           <button
             type="button"
@@ -340,11 +387,30 @@ export default function TransactionForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* OCR Processing Loader banner */}
-        {ocrLoading && (
+        {/* ส่วนอัปโหลดรูปสลิปโดยตรง */}
+        <div className="p-4 bg-gray-900/40 border border-gray-800 rounded-xl">
+          <label className="block text-sm font-medium text-gray-400 mb-2">
+            📷 อัปโหลดรูปสลิปเพื่อสแกนด้วย AI
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            disabled={isAnalyzing}
+            className="block w-full text-sm text-gray-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-xl file:border-0
+              file:text-sm file:font-semibold
+              file:bg-indigo-600/20 file:text-indigo-300
+              hover:file:bg-indigo-600/30 cursor-pointer"
+          />
+        </div>
+
+        {/* ข้อความแจ้งเตือนขณะกำลังวิเคราะห์สลิป */}
+        {isAnalyzing && (
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-sm font-medium flex items-center gap-2 animate-pulse">
             <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-            <span>{ocrProgress}</span>
+            <span>🤖 AI กำลังวิเคราะห์สลิป...</span>
           </div>
         )}
 
@@ -441,9 +507,22 @@ export default function TransactionForm({
 
         {/* Tags Selection Dropdown */}
         <div>
-          <label htmlFor="tag-select" className="block text-sm font-medium text-gray-400 mb-1.5">
-            เลือกแท็ก / หมวดหมู่ย่อย
-          </label>
+          <div className="flex justify-between items-center mb-1.5">
+            <label htmlFor="tag-select" className="block text-sm font-medium text-gray-400">
+              เลือกแท็ก / หมวดหมู่ย่อย
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsAdminMode(!isAdminMode)}
+              className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all duration-200 select-none cursor-pointer ${
+                isAdminMode 
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30' 
+                  : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:text-gray-300'
+              }`}
+            >
+              {isAdminMode ? '🔓 Admin Mode' : '🔒 Admin Mode'}
+            </button>
+          </div>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Tag className="h-4 w-4 text-gray-500" />
@@ -463,6 +542,40 @@ export default function TransactionForm({
                 ✏️ ระบุแท็กเอง (ฟรีเท็กซ์)...
               </option>
             </select>
+          </div>
+
+          {/* Tag Badges for Selection & Deletion */}
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {mergedTags.map((tag, idx) => {
+              const isDefault = DEFAULT_TAGS.includes(tag);
+              return (
+                <span
+                  key={idx}
+                  onClick={() => setSelectedTagOpt(tag)}
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border transition-all duration-250 cursor-pointer select-none ${
+                    selectedTagOpt === tag
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
+                      : 'bg-gray-900/40 text-gray-400 border-gray-800 hover:border-gray-700 hover:text-gray-300'
+                  }`}
+                >
+                  {tag}
+                  {!isDefault && isAdminMode && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`ต้องการลบแท็ก "${tag}" ใช่หรือไม่เหมียว?`)) {
+                          handleDeleteTag(tag);
+                        }
+                      }}
+                      className="ml-1 text-rose-400 hover:text-rose-600 transition-colors p-0.5 hover:bg-rose-500/10 rounded"
+                    >
+                      ❌
+                    </button>
+                  )}
+                </span>
+              );
+            })}
           </div>
         </div>
 

@@ -632,6 +632,21 @@ export default function App() {
     }
   };
 
+  // Delete Custom Tag from User Settings
+  const handleDeleteCustomTag = async (tagToDelete) => {
+    if (!user || !tagToDelete.trim()) return;
+    try {
+      const updatedTags = savedTags.filter(tag => tag !== tagToDelete.trim());
+      await setDoc(doc(db, 'userSettings', 'shared_household_budget'), {
+        savedTags: updatedTags
+      }, { merge: true });
+      logAction(user.uid, user.email, "ลบตัวเลือกดร็อปดาวน์", `ลบตัวเลือกแท็ก: "${tagToDelete.trim()}"`);
+    } catch (err) {
+      console.error("Error deleting custom tag option:", err);
+    }
+  };
+
+
   // --- STATS & BALANCE CALCULATIONS ---
   // Filters transactions by selected wallet
   const displayTransactions = selectedWalletId === 'all'
@@ -1001,6 +1016,7 @@ export default function App() {
             savedTags={savedTags}
             onSaveCustomTitle={handleSaveCustomTitle}
             onSaveCustomTag={handleSaveCustomTag}
+            onDeleteCustomTag={handleDeleteCustomTag}
           />
           
           {/* Quick Actions Panel */}
