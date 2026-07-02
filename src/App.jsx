@@ -646,6 +646,21 @@ export default function App() {
     }
   };
 
+  // Delete Custom Title from User Settings
+  const handleDeleteCustomTitle = async (titleToDelete) => {
+    if (!user || !titleToDelete.trim()) return;
+    try {
+      const updatedTitles = savedTitles.filter(title => title !== titleToDelete.trim());
+      await setDoc(doc(db, 'userSettings', 'shared_household_budget'), {
+        savedTitles: updatedTitles
+      }, { merge: true });
+      logAction(user.uid, user.email, "ลบตัวเลือกดร็อปดาวน์", `ลบตัวเลือกชื่อรายการ: "${titleToDelete.trim()}"`);
+    } catch (err) {
+      console.error("Error deleting custom title option:", err);
+    }
+  };
+
+
 
   // --- STATS & BALANCE CALCULATIONS ---
   // Filters transactions by selected wallet
@@ -1017,6 +1032,7 @@ export default function App() {
             onSaveCustomTitle={handleSaveCustomTitle}
             onSaveCustomTag={handleSaveCustomTag}
             onDeleteCustomTag={handleDeleteCustomTag}
+            onDeleteCustomTitle={handleDeleteCustomTitle}
           />
           
           {/* Quick Actions Panel */}

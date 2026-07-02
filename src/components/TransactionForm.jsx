@@ -84,7 +84,8 @@ export default function TransactionForm({
   savedTags = [],
   onSaveCustomTitle,
   onSaveCustomTag,
-  onDeleteCustomTag
+  onDeleteCustomTag,
+  onDeleteCustomTitle
 }) {
   const mergedTitles = [...new Set([...DEFAULT_TITLES, ...savedTitles])];
   const mergedTags = [...new Set([...DEFAULT_TAGS, ...savedTags])];
@@ -111,6 +112,14 @@ export default function TransactionForm({
       onDeleteCustomTag(tag);
     }
   };
+
+  // Function to delete title
+  const handleDeleteTitle = (title) => {
+    if (onDeleteCustomTitle) {
+      onDeleteCustomTitle(title);
+    }
+  };
+
 
 
   // OCR scanning states
@@ -445,6 +454,40 @@ export default function TransactionForm({
                 ✏️ ระบุชื่อรายการเอง...
               </option>
             </select>
+          </div>
+
+          {/* Title Badges for Selection & Deletion */}
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {mergedTitles.map((title, idx) => {
+              const isDefault = DEFAULT_TITLES.includes(title);
+              return (
+                <span
+                  key={idx}
+                  onClick={() => setSelectedTitleOpt(title)}
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border transition-all duration-250 cursor-pointer select-none ${
+                    selectedTitleOpt === title
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
+                      : 'bg-gray-900/40 text-gray-400 border-gray-800 hover:border-gray-700 hover:text-gray-300'
+                  }`}
+                >
+                  {title}
+                  {!isDefault && isAdminMode && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`ต้องการลบชื่อรายการ "${title}" ใช่หรือไม่เหมียว?`)) {
+                          handleDeleteTitle(title);
+                        }
+                      }}
+                      className="ml-1 text-rose-400 hover:text-rose-600 transition-colors p-0.5 hover:bg-rose-500/10 rounded"
+                    >
+                      ❌
+                    </button>
+                  )}
+                </span>
+              );
+            })}
           </div>
         </div>
 
